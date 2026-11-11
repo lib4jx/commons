@@ -5,6 +5,8 @@ import com.msm.core.commons.Constants;
 import com.msm.core.commons.Utils;
 import com.msm.core.dynamicquery.ConditionUtils;
 import com.msm.core.dynamicquery.SelectBuilder;
+import com.msm.core.dynamicquery.relation.RelationQueryContext;
+import com.msm.core.dynamicquery.relation.SecuredRelationScope;
 import com.msm.core.exceptions.CommonErrors;
 import com.msm.core.filter.domain.FilterCondition;
 import com.msm.core.filter.domain.FilterGroup;
@@ -20,7 +22,6 @@ import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.SelectConditionStep;
-import org.jooq.Table;
 
 import java.util.List;
 import java.util.Map;
@@ -35,89 +36,19 @@ public class DefaultFilterQuery implements FilterQuery {
 
     @Override
     public PageResponse<Map<String, Object>> lookup(ObjectMetadata meta, ObjectFilterRequest request) {
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition securityCondition = securityConditionProvider.buildLookupDataScopeCondition(meta);
-
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition)
-                .and(securityCondition);
-
-        SortingApplier.apply(query, request, meta);
-        PagingApplier.apply(query, request);
-        List<Map<String, Object>> result = query.fetchMaps();
-        if(Objects.nonNull(request.getPageRequest())) {
-            Long total = dsl
-                    .selectCount()
-                    .from(table)
-                    .where(condition)
-                    .and(securityCondition)
-                    .fetchOne(0, Long.class);
-
-            if (total == null) {
-                total = 0L;
-            }
-            return PageResponse.of(result, total, request.getPageRequest().getPage(), request.getPageRequest().getSize());
-        }
-
-        return PageResponse.of(result);
+        return page(meta, request, securityConditionProvider.buildLookupDataScopeCondition(meta));
     }
 
 
     @Override
     public PageResponse<Map<String, Object>> filter(ObjectMetadata meta, ObjectFilterRequest request) {
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition securityCondition = securityConditionProvider.buildViewDataScopeCondition(meta);
-
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition)
-                .and(securityCondition);
-
-        SortingApplier.apply(query, request, meta);
-        PagingApplier.apply(query, request);
-        List<Map<String, Object>> result = query.fetchMaps();
-        if(Objects.nonNull(request.getPageRequest())) {
-            Long total = dsl
-                    .selectCount()
-                    .from(table)
-                    .where(condition)
-                    .and(securityCondition)
-                    .fetchOne(0, Long.class);
-
-            if (total == null) {
-                total = 0L;
-            }
-            return PageResponse.of(result, total, request.getPageRequest().getPage(), request.getPageRequest().getSize());
-        }
-
-        return PageResponse.of(result);
+        return page(meta, request, securityConditionProvider.buildViewDataScopeCondition(meta));
     }
 
     @Override
     public Stream<Map<String, Object>> filterStream(ObjectMetadata meta, ObjectFilterRequest request, int fetchSize) {
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition securityCondition = securityConditionProvider.buildViewDataScopeCondition(meta);
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition)
-                .and(securityCondition);
-
-        SortingApplier.apply(query, request, meta);
-        return query.fetchSize(fetchSize)
+        return prepare(meta, request, securityConditionProvider.buildViewDataScopeCondition(meta)).select()
+                .fetchSize(fetchSize)
                 .fetchStream()
                 .map(Record::intoMap);
     }
@@ -130,19 +61,7 @@ public class DefaultFilterQuery implements FilterQuery {
             Class<T> targetClass,
             Consumer<T> consumer) {
 
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition securityCondition = securityConditionProvider.buildViewDataScopeCondition(meta);
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition)
-                .and(securityCondition);
-
-        SortingApplier.apply(query, request, meta);
+        SelectConditionStep<Record> query = prepare(meta, request, securityConditionProvider.buildViewDataScopeCondition(meta)).select();
 
         try (Stream<T> stream = query.fetchSize(fetchSize).fetchStream().map(r -> r.into(targetClass))) {
             stream.forEach(consumer);
@@ -157,19 +76,7 @@ public class DefaultFilterQuery implements FilterQuery {
             TypeReference<T> targetType,
             Consumer<T> consumer) {
 
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition securityCondition = securityConditionProvider.buildViewDataScopeCondition(meta);
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition)
-                .and(securityCondition);
-
-        SortingApplier.apply(query, request, meta);
+        SelectConditionStep<Record> query = prepare(meta, request, securityConditionProvider.buildViewDataScopeCondition(meta)).select();
 
         try (Stream<Record> recordStream = query.fetchSize(fetchSize).fetchStream()) {
             recordStream
@@ -188,23 +95,57 @@ public class DefaultFilterQuery implements FilterQuery {
             int fetchSize,
             Consumer<Map<String, Object>> consumer) {
 
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition securityCondition = securityConditionProvider.buildViewDataScopeCondition(meta);
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition)
-                .and(securityCondition);
-
-        SortingApplier.apply(query, request, meta);
+        SelectConditionStep<Record> query = prepare(meta, request, securityConditionProvider.buildViewDataScopeCondition(meta)).select();
 
         try (Stream<Map<String, Object>> stream = query.fetchSize(fetchSize).fetchStream().map(Record::intoMap)) {
             stream.forEach(consumer);
         }
+    }
+
+    /** One page of the request (and the total when it asks for a page). */
+    private PageResponse<Map<String, Object>> page(ObjectMetadata meta, ObjectFilterRequest request, Condition securityCondition) {
+        PreparedQuery prepared = prepare(meta, request, securityCondition);
+        SelectConditionStep<Record> query = prepared.select();
+        PagingApplier.apply(query, request);
+        List<Map<String, Object>> result = query.fetchMaps();
+        if(Objects.nonNull(request.getPageRequest())) {
+            Long total = prepared.relations().applyTimeout(dsl
+                    .selectCount()
+                    .from(meta.getTable())
+                    .where(prepared.condition())
+                    .and(securityCondition))
+                    .fetchOne(0, Long.class);
+
+            if (total == null) {
+                total = 0L;
+            }
+            return PageResponse.of(result, total, request.getPageRequest().getPage(), request.getPageRequest().getSize());
+        }
+
+        return PageResponse.of(result);
+    }
+
+    /**
+     * The select of the request: search, soft delete (always enforced), filters, return fields and sorts, relations
+     * included (the caller's permission and data scope apply to every related object), and the security condition.
+     */
+    private PreparedQuery prepare(ObjectMetadata meta, ObjectFilterRequest request, Condition securityCondition) {
+        RelationQueryContext relations = RelationQueryContext.of(new SecuredRelationScope(securityConditionProvider));
+        SearchOrDefaultFilter.resolveSearchFilter(request);
+        SearchOrDefaultFilter.enforceNotDeleted(meta, request);
+        Condition condition = FilterBuilder.build(request.getFilters(), meta, relations);
+        SelectConditionStep<Record> query = dsl
+                .select(SelectBuilder.buildFields(meta, request, relations))
+                .from(meta.getTable())
+                .where(condition)
+                .and(securityCondition);
+
+        SortingApplier.apply(query, request, meta, relations);
+        relations.applyTimeout(query);
+        return new PreparedQuery(query, condition, relations);
+    }
+
+    private record PreparedQuery(SelectConditionStep<Record> select, Condition condition, RelationQueryContext relations) {
     }
 
 

@@ -34,7 +34,7 @@ import java.util.Objects;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class Attribute {
@@ -60,6 +60,14 @@ public class Attribute {
     private Boolean isSystem;
     private String objectType;
     private Class<? extends Enum<?>> enumType;
+    /** False when the attribute cannot be filtered on, selected or sorted through a relation (null means true). */
+    private Boolean isFilterable;
+    /**
+     * Table or alias the column is qualified with in SQL, or null for the bare column. Set only on the copies a
+     * relation subquery uses ({@code com.msm.core.dynamicquery.relation.QualifiedMetadata}).
+     */
+    @JsonIgnore
+    private String qualifier;
 
     /**
      * Constructs a field representation for a database column with its associated metadata.
@@ -85,6 +93,9 @@ public class Attribute {
         //Exp: String -> VARCHAR: default
         //if String -> TEXT then columnType = TEXT
         //Get data type by columnType=TEXT but implement after
+        if (qualifier != null) {
+            return DSL.field(DSL.name(qualifier, columnName), dataType);
+        }
         return DSL.field(DSL.name(columnName), dataType);
     }
 
@@ -150,6 +161,12 @@ public class Attribute {
 
     public boolean hasRef() {
         return Objects.nonNull(getAttributeRef()) && Utils.STR.isNotBlank(getAttributeRef().getFieldName());
+    }
+
+    /** False only when the attribute is declared {@code filterable = false}. */
+    @JsonIgnore
+    public boolean isFilterableThroughRelation() {
+        return !Boolean.FALSE.equals(isFilterable);
     }
 
     public boolean isEnumField() {

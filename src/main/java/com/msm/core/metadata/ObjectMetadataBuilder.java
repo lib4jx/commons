@@ -181,19 +181,25 @@ public class ObjectMetadataBuilder {
                 result.setRegex(ann.regex());
             }
 
+            if (!ann.filterable()) {
+                result.setIsFilterable(false);
+            }
+
             Class<? extends Enum<?>> enumClass = ann.enumType();
             if (enumClass != AttributeDefinition.NoEnum.class) {
                 result.setEnumType(enumClass);
             }
 
             AttributeDefinitionRef attributeDefinitionRef = ann.attributeRef();
-            result.setAttributeRef(
-                    AttributeRef.of(
-                            attributeDefinitionRef.fieldName(),
-                            attributeDefinitionRef.objectRef(),
-                            attributeDefinitionRef.usageType()
-                    )
+            AttributeRef attributeRef = AttributeRef.of(
+                    attributeDefinitionRef.fieldName(),
+                    attributeDefinitionRef.objectRef(),
+                    attributeDefinitionRef.usageType()
             );
+            if (Utils.STR.isNotBlank(attributeDefinitionRef.reverseName())) {
+                attributeRef.setReverseName(attributeDefinitionRef.reverseName());
+            }
+            result.setAttributeRef(attributeRef);
         }
     }
 

@@ -156,6 +156,8 @@ record.set(OrderMeta.ORDER_CODE, "SO001");
   | `@ObjectDefinitionRef(relationType = CHILD_OF)` | Object con kế thừa quyền của object cha |
   | `@IgnorePermission` | Tắt security cho object |
   | `@SecuredField(TEAM)` | Đánh dấu cột dùng cho data scope |
+  | `@AttributeDefinitionRef(..., reverseName = "products")` | Đặt tên nghiệp vụ cho relation one-to-many ở object được tham chiếu (không khai thì tên tự sinh, xem [Relation](#relation-cùng-service)) |
+  | `@AttributeDefinition(filterable = false)` | Field nhạy cảm: không lọc, không chọn, không sort được qua relation |
 
 ## Dynamic query
 
@@ -181,9 +183,69 @@ record.set(OrderMeta.ORDER_CODE, "SO001");
 - Chỉ filter, sort hoặc select được các field **có trong metadata**. Field lạ ném `FieldNotFoundException`.
 - Field JSON dùng được đường dẫn `a.b.c`. Giá trị lấy ra là **text**, nên `GREATER_THAN`/`LESS_THAN` so sánh theo chuỗi; chỉ `BETWEEN` có ép kiểu.
 - `filter`, `lookup`, `filterStream` và `findByCondition` của `DefaultFilterQuery` đều áp điều kiện data scope của user. Cần lấy dữ liệu không lọc quyền (job chạy nền…) thì dùng `InternalQueryService`.
-- `filter` và `lookup` tự động:
-  - thêm `(isDeleted = false OR isDeleted IS NULL)` nếu object có `isDeleted` và request chưa filter field này;
-  - thêm điều kiện data scope của user.
+- `filter`, `lookup` và `filterStream` tự động:
+  - thêm `(isDeleted = false OR isDeleted IS NULL)` nếu object có `isDeleted`:
+    - `DefaultFilterQuery`: **luôn** thêm, kể cả khi request có điều kiện riêng trên `isDeleted`, nên không đọc được bản ghi đã xóa mềm;
+    - `InternalFilterQuery`: chỉ thêm khi request chưa filter field này (giữ như cũ);
+  - thêm điều kiện data scope của user (chỉ `DefaultFilterQuery`).
+
+### Relation (cùng service)
+
+Filter của một object có thể dùng object khác **cùng service** (cùng database) qua relation mà object khai báo. Object của service khác thì không: dùng cột `<ref>_code` / JSON `<ref>IdReference` đã lưu sẵn.
+
+```json
+{
+  "returnFields": ["*", "@blanketOrder.code", "@blanketOrder.quoteIdReference.code"],
+  "search": { "keyword": "bo.26", "fields": ["productCode", "@blanketOrder.code", "@blanketOrder.name"] },
+  "filters": {
+    "operator": "AND",
+    "conditions": [
+      { "relation": "blanketOrder", "match": "ANY",
+        "filters": { "operator": "AND", "conditions": [ { "field": "status", "operator": "EQUALS", "value": "ACTIVE" } ] } },
+      { "field": "@blanketOrder.code", "operator": "IN", "value": ["BO.2611.00012"] }
+    ]
+  },
+  "pageRequest": { "page": 1, "size": 20, "sorts": [ { "attribute": "@blanketOrder.code", "direction": "ASC" } ] }
+}
+```
+
+- **Relation của một object:** chỉ sinh từ `attributeRef` trỏ tới object **của service này**:
+
+  | Loại | Có từ đâu | Tên |
+  |---|---|---|
+  | many-to-one | Attribute của object có `attributeRef` | Tên reference bỏ `IdReference` (`blanketOrderIdReference` → `blanketOrder`) |
+  | one-to-many | `attributeRef` ở object khác (object con) trỏ về object này | `reverseName` nếu có. Không có thì lấy tên object con (`v2blanketorderproduct`). Object con trỏ về cùng object này nhiều lần mà không có `reverseName` thì lấy `<object con>_<field khóa>` (`contract_customerId`) |
+
+  ```java
+  // V2BlanketOrderProduct: @blanketOrder trên dòng sản phẩm, @products trên đơn khung
+  @AttributeDefinition(attributeRef = @AttributeDefinitionRef(
+          fieldName = "blanketOrderIdReference", objectRef = "v2blanketorder", reverseName = "products"))
+  @Column(name = "blanket_order_id")
+  private UUID blanketOrderId;
+  ```
+
+  Cột là list (multi-select) thì không sinh relation.
+
+  Tên không khai báo thì báo `FieldValueInvalidException` ("Unknown relation"). Hai relation trùng tên thì báo "Ambiguous relation".
+- **Node `{ "relation", "match", "filters" }`** trong `filters` thành `EXISTS` (`match: ANY`, mặc định) hoặc `NOT EXISTS` (`match: NONE`) của subquery trên object đích, với alias `rel_<n>`. Dòng của object được query **không bị nhân lên**, nên phân trang và tổng số vẫn đúng. `filters` rỗng nghĩa là "có (hoặc không có) dòng liên quan".
+- **`@<relation>.<field>`** trong `returnFields` và `sorts` là scalar subquery, **chỉ** qua relation many-to-one. Key trong kết quả đúng bằng chuỗi đó. Dòng liên quan không có, đã xóa hoặc ngoài quyền thì đọc ra `null`.
+- **`returnFields`:**
+  - `null` hoặc `[]`: mọi field của object đang query, như cũ (không có field relation);
+  - có `"*"`: `"*"` là mọi field của object đó, thêm được field relation, ví dụ `["*", "@blanketOrder.code"]`. Field trùng chỉ lấy một lần;
+  - liệt kê từng field: lấy đúng các field đó.
+- **`{"field": "@<relation>.<field>", "operator", "value"}`** trong `conditions` giống một node `relation` (ANY) chứa điều kiện đó. Mỗi điều kiện như vậy là một `EXISTS` riêng: qua relation one-to-many, hai điều kiện có thể khớp hai dòng con khác nhau. Muốn cùng một dòng con thì gom vào một node `relation`.
+- **`@<relation>.<field>`** trong `search.fields`: các field của cùng một relation gom vào **một** `EXISTS`, OR với các field của chính object.
+- **Quyền** (chỉ `DefaultFilterQuery`):
+  - user phải có quyền VIEW trên object đích (object cha nếu đích là `CHILD_OF`), không thì ném `RelationAccessDeniedException` (mã `RELATION_ACCESS_DENIED`);
+  - subquery luôn có data scope VIEW và điều kiện chưa xóa mềm của object đích.
+
+  `InternalFilterQuery` không áp quyền hay data scope, nhưng vẫn bỏ dòng đích đã xóa mềm.
+- **Giới hạn** (`RelationSettings`, đổi được lúc khởi động):
+  - mỗi query tối đa **3** relation khác nhau;
+  - **1** cấp (filter của relation không chứa relation khác);
+  - query có relation có timeout **30 s**.
+- **Field `filterable = false`** của object đích không dùng được qua relation. Lọc trực tiếp trên object đó vẫn được.
+- **Hàm cũ không hỗ trợ relation:** `FilterBuilder.build(filter, meta)`, `SelectBuilder.buildFields(meta, fields)` và `SortingApplier.apply(query, request, meta)` từ chối relation. Bản có `RelationQueryContext` thì hỗ trợ.
 
 ### Toán tử
 

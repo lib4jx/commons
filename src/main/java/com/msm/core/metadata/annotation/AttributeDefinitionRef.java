@@ -60,4 +60,17 @@ public @interface AttributeDefinitionRef {
      * @return the reference profile name
      */
     String refProfile() default "";
+
+    /**
+     * Name of the one-to-many relation on the referenced object back to this object, for the filters of the
+     * referenced object ({@code FilterRelation}). Applies when the referenced object is an object of the same
+     * service. Example: on the blanket order key of a product line, {@code reverseName = "products"} lets a blanket
+     * order filter on its product lines with {@code products}.
+     * <p>
+     * Empty (default): the relation is still there, named after this object ({@code v2blanketorderproduct}), or
+     * {@code <this object>_<field>} when this object references the same object several times without a reverseName.
+     *
+     * @return the one-to-many relation name, or empty for the generated name
+     */
+    String reverseName() default "";
 }

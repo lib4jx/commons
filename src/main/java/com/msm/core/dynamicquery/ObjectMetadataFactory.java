@@ -3,6 +3,8 @@ package com.msm.core.dynamicquery;
 import com.msm.core.exceptions.CommonErrors;
 import com.msm.core.metadata.ObjectMetadata;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,5 +27,10 @@ public class ObjectMetadataFactory {
             throw CommonErrors.objectNotFound(objectName);
         }
         return objectMetadata;
+    }
+
+    /** Every registered object (a snapshot). */
+    public static Collection<ObjectMetadata> getAll() {
+        return List.copyOf(CACHE_TABLE.values());
     }
 }

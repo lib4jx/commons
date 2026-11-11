@@ -10,6 +10,7 @@ import com.msm.core.dynamicquery.query.FilterQuery;
 import com.msm.core.dynamicquery.query.PagingApplier;
 import com.msm.core.dynamicquery.query.SearchOrDefaultFilter;
 import com.msm.core.dynamicquery.query.SortingApplier;
+import com.msm.core.dynamicquery.relation.RelationQueryContext;
 import com.msm.core.exceptions.CommonErrors;
 import com.msm.core.filter.domain.FilterCondition;
 import com.msm.core.filter.domain.FilterGroup;
@@ -24,7 +25,6 @@ import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.SelectConditionStep;
-import org.jooq.Table;
 
 import java.util.List;
 import java.util.Map;
@@ -38,80 +38,19 @@ public class InternalFilterQuery implements FilterQuery {
 
     @Override
     public PageResponse<Map<String, Object>> lookup(ObjectMetadata meta, ObjectFilterRequest request) {
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition);
-
-        SortingApplier.apply(query, request, meta);
-        PagingApplier.apply(query, request);
-        List<Map<String, Object>> result = query.fetchMaps();
-        if(Objects.nonNull(request.getPageRequest())) {
-            Long total = dsl
-                    .selectCount()
-                    .from(table)
-                    .where(condition)
-                    .fetchOne(0, Long.class);
-
-            if (total == null) {
-                total = 0L;
-            }
-            return PageResponse.of(result, total, request.getPageRequest().getPage(), request.getPageRequest().getSize());
-        }
-
-        return PageResponse.of(result);
+        return page(meta, request);
     }
 
 
     @Override
     public PageResponse<Map<String, Object>> filter(ObjectMetadata meta, ObjectFilterRequest request) {
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition);
-
-        SortingApplier.apply(query, request, meta);
-        PagingApplier.apply(query, request);
-        List<Map<String, Object>> result = query.fetchMaps();
-        if(Objects.nonNull(request.getPageRequest())) {
-            Long total = dsl
-                    .selectCount()
-                    .from(table)
-                    .where(condition)
-                    .fetchOne(0, Long.class);
-
-            if (total == null) {
-                total = 0L;
-            }
-            return PageResponse.of(result, total, request.getPageRequest().getPage(), request.getPageRequest().getSize());
-        }
-
-        return PageResponse.of(result);
+        return page(meta, request);
     }
 
     @Override
     public Stream<Map<String, Object>> filterStream(ObjectMetadata meta, ObjectFilterRequest request, int fetchSize) {
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition);
-
-        SortingApplier.apply(query, request, meta);
-        return query.fetchSize(fetchSize)
+        return prepare(meta, request).select()
+                .fetchSize(fetchSize)
                 .fetchStream()
                 .map(Record::intoMap);
     }
@@ -124,22 +63,10 @@ public class InternalFilterQuery implements FilterQuery {
             Class<T> targetClass,
             Consumer<T> consumer) {
 
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition);
-
-        SortingApplier.apply(query, request, meta);
+        SelectConditionStep<Record> query = prepare(meta, request).select();
 
         try (Stream<T> stream = query.fetchSize(fetchSize).fetchStream().map(r -> r.into(targetClass))) {
             stream.forEach(consumer);
-        } catch (Exception e) {
-            throw new RuntimeException("Error while streaming data", e);
         }
     }
 
@@ -151,17 +78,7 @@ public class InternalFilterQuery implements FilterQuery {
             TypeReference<T> targetType,
             Consumer<T> consumer) {
 
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition);
-
-        SortingApplier.apply(query, request, meta);
+        SelectConditionStep<Record> query = prepare(meta, request).select();
 
         try (Stream<Record> recordStream = query.fetchSize(fetchSize).fetchStream()) {
             recordStream
@@ -180,24 +97,57 @@ public class InternalFilterQuery implements FilterQuery {
             int fetchSize,
             Consumer<Map<String, Object>> consumer) {
 
-        SearchOrDefaultFilter.resolveSearchFilter(request);
-        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
-        Table<?> table = meta.getTable();
-        Condition condition = FilterBuilder.build(request.getFilters(), meta);
-
-        SelectConditionStep<Record> query = dsl
-                .select(SelectBuilder.buildFields(meta, request))
-                .from(table)
-                .where(condition);
-
-        SortingApplier.apply(query, request, meta);
+        SelectConditionStep<Record> query = prepare(meta, request).select();
 
         try (Stream<Map<String, Object>> stream = query.fetchSize(fetchSize).fetchStream().map(Record::intoMap)) {
             stream.forEach(consumer);
-        } catch (Exception e) {
-            throw new RuntimeException("Error while streaming data", e);
         }
     }
+
+    /** One page of the request (and the total when it asks for a page). */
+    private PageResponse<Map<String, Object>> page(ObjectMetadata meta, ObjectFilterRequest request) {
+        PreparedQuery prepared = prepare(meta, request);
+        SelectConditionStep<Record> query = prepared.select();
+        PagingApplier.apply(query, request);
+        List<Map<String, Object>> result = query.fetchMaps();
+        if(Objects.nonNull(request.getPageRequest())) {
+            Long total = prepared.relations().applyTimeout(dsl
+                    .selectCount()
+                    .from(meta.getTable())
+                    .where(prepared.condition()))
+                    .fetchOne(0, Long.class);
+
+            if (total == null) {
+                total = 0L;
+            }
+            return PageResponse.of(result, total, request.getPageRequest().getPage(), request.getPageRequest().getSize());
+        }
+
+        return PageResponse.of(result);
+    }
+
+    /**
+     * The select of the request: search, soft delete, filters, return fields and sorts, relations included. Internal:
+     * no permission or data scope, on the queried object or on the related ones.
+     */
+    private PreparedQuery prepare(ObjectMetadata meta, ObjectFilterRequest request) {
+        RelationQueryContext relations = RelationQueryContext.unsecured();
+        SearchOrDefaultFilter.resolveSearchFilter(request);
+        SearchOrDefaultFilter.addIsDeletedFilter(meta, request);
+        Condition condition = FilterBuilder.build(request.getFilters(), meta, relations);
+        SelectConditionStep<Record> query = dsl
+                .select(SelectBuilder.buildFields(meta, request, relations))
+                .from(meta.getTable())
+                .where(condition);
+
+        SortingApplier.apply(query, request, meta, relations);
+        relations.applyTimeout(query);
+        return new PreparedQuery(query, condition, relations);
+    }
+
+    private record PreparedQuery(SelectConditionStep<Record> select, Condition condition, RelationQueryContext relations) {
+    }
+
 
     public Map<String, Object> findById(ObjectMetadata meta, Object id, List<String> returnFields) {
         if (id == null) {

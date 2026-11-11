@@ -10,6 +10,8 @@ public class AttributeRef {
     private String objectRef;
     private String usageType = "Reference";
     private Set<String> attributeRefs;
+    /** One-to-many relation name on the referenced object back to this object; null for the generated name. */
+    private String reverseName;
 
     public AttributeRef(String fieldName, String objectRef) {
         this.fieldName = fieldName;

@@ -144,4 +144,13 @@ public @interface AttributeDefinition {
      * @return the associated attribute reference metadata
      */
     AttributeDefinitionRef attributeRef() default @AttributeDefinitionRef();
+
+    /**
+     * False for a sensitive attribute (password hash, OTP, token…) that a filter of another object must not reach
+     * through a relation: it cannot be filtered on, selected or sorted from the related side.
+     * Defaults to {@code true}.
+     *
+     * @return whether the attribute can be used through a relation
+     */
+    boolean filterable() default true;
 }

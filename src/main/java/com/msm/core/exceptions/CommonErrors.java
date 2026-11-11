@@ -77,4 +77,8 @@ public class CommonErrors {
         return new ObjectNotFoundException(objectName, msg, cause);
     }
 
+
+    public static RelationAccessDeniedException relationAccessDenied(String objectName, String msg) {
+        return new RelationAccessDeniedException(objectName, msg);
+    }
 }
