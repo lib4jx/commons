@@ -8,11 +8,11 @@ Thư viện Java dùng chung cho các service MSM (package `com.msm.core`). Cung
 - **Metadata object** build từ JPA metamodel và annotation.
 - **Validation**, **security** (permission, data scope), **exception** chuẩn và các tiện ích (`Utils`).
 
-> Thư viện **không phụ thuộc Spring** và không có auto-configuration. Service sử dụng phải tự tạo bean và đăng ký các hook tĩnh (xem [Khởi tạo](#khởi-tạo)). Với service Spring Boot, nên dùng [generic-object-management](https://github.com/msm-lib/generic-object-management): thư viện đó đã làm sẵn phần này.
+> Thư viện **không phụ thuộc Spring** và không có auto-configuration. Service sử dụng phải tự tạo bean và đăng ký các hook tĩnh (xem [Khởi tạo](#khởi-tạo)). Với service Spring Boot, nên dùng [generic-object-management](https://github.com/lib4jx/generic-object-management): thư viện đó đã làm sẵn phần này.
 
 ## Cài đặt
 
-Bản phát hành là **git tag** (ví dụ `2.3.7`), build qua [JitPack](https://jitpack.io/#msm-lib/commons). Dòng `version` trong `build.gradle.kts` không phải version được publish.
+Bản phát hành là **git tag** (ví dụ `2.3.7`), build qua [JitPack](https://jitpack.io/#lib4jx/commons). Dòng `version` trong `build.gradle.kts` không phải version được publish.
 
 ```kotlin
 repositories {
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.msm-lib:commons:2.3.7")
+    implementation("com.github.lib4jx:commons:2.3.7")
 }
 ```
 
@@ -325,7 +325,7 @@ public void beforeCreate(ActionContext<Map<String, Object>> ctx) { ... }
 
 1. Merge thay đổi vào `main`.
 2. Tạo GitHub Release với tag mới trên `main` (semver, không có tiền tố `v`, ví dụ `2.3.8`).
-3. Mở <https://jitpack.io/#msm-lib/commons> và bấm **Get it** ở tag mới để build.
+3. Mở <https://jitpack.io/#lib4jx/commons> và bấm **Get it** ở tag mới để build.
 4. Cập nhật version ở các service dùng thư viện (ví dụ `msmCommonVersion` trong generic-object-management).
 
 `jitpack.yml` cố định JDK `21.0.2-open` qua SDKMAN, vì alias `openjdk21` của JitPack có thể trỏ tới bản không tải được.
