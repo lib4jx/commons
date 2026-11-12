@@ -36,8 +36,10 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.msm.core.dynamicquery.relation.RelationFixtures.LINE;
+import static com.msm.core.dynamicquery.relation.RelationFixtures.NOTE;
 import static com.msm.core.dynamicquery.relation.RelationFixtures.ORDER;
 import static com.msm.core.dynamicquery.relation.RelationFixtures.ORG_A;
+import static com.msm.core.dynamicquery.relation.RelationFixtures.PROFILE;
 import static com.msm.core.dynamicquery.relation.RelationFixtures.and;
 import static com.msm.core.dynamicquery.relation.RelationFixtures.condition;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -122,6 +124,51 @@ class RelationQueryTest {
         assertThatThrownBy(() -> RelationResolver.resolve(ORDER, "quote"))
                 .isInstanceOf(FieldValueInvalidException.class)
                 .hasMessageContaining("Unknown relation 'quote'");
+    }
+
+    @Test
+    void referenceFieldIsTheManyToOneNameAndTheShortNameAnAlias() {
+        ResolvedRelation full = RelationResolver.resolve(ORDER, "customerIdReference");
+        ResolvedRelation alias = RelationResolver.resolve(ORDER, "customer");
+
+        assertThat(full.kind()).isEqualTo(RelationKind.MANY_TO_ONE);
+        assertThat(full.target().getName()).isEqualTo("rtaccount");
+        assertThat(full.name()).isEqualTo("customerIdReference");
+        assertThat(full.key()).isEqualTo(alias.key());
+        assertThat(sql(full.link("rt_order", "rel_1"))).isEqualTo(sql(alias.link("rt_order", "rel_1")));
+    }
+
+    @Test
+    void twoReferencesToOneObjectAreTwoRelationsNamedAfterTheirReferenceFields() {
+        assertThat(sql(RelationResolver.resolve(NOTE, "orderIdReference").link("rt_note", "rel_1")))
+                .isEqualTo("\"rel_1\".\"id\" = \"rt_note\".\"order_id\"");
+        assertThat(sql(RelationResolver.resolve(NOTE, "sourceOrderIdReference").link("rt_note", "rel_1")))
+                .isEqualTo("\"rel_1\".\"id\" = \"rt_note\".\"source_order_id\"");
+    }
+
+    @Test
+    void referenceNamedWithoutIdHasOnlyItsFullName() {
+        ResolvedRelation analyst = RelationResolver.resolve(PROFILE, "creditAnalystReference");
+
+        assertThat(analyst.kind()).isEqualTo(RelationKind.MANY_TO_ONE);
+        assertThat(sql(analyst.link("rt_profile", "rel_1"))).isEqualTo("\"rel_1\".\"id\" = \"rt_profile\".\"credit_analyst\"");
+        assertThatThrownBy(() -> RelationResolver.resolve(PROFILE, "creditAnalyst"))
+                .isInstanceOf(FieldValueInvalidException.class)
+                .hasMessageContaining("Unknown relation 'creditAnalyst'");
+    }
+
+    @Test
+    void fullReferenceNameToAnObjectOfAnotherServiceIsNoRelation() {
+        assertThatThrownBy(() -> RelationResolver.resolve(ORDER, "quoteIdReference"))
+                .isInstanceOf(FieldValueInvalidException.class)
+                .hasMessageContaining("Unknown relation 'quoteIdReference'");
+    }
+
+    @Test
+    void relationNameIsCaseSensitive() {
+        assertThatThrownBy(() -> RelationResolver.resolve(ORDER, "customeridreference"))
+                .isInstanceOf(FieldValueInvalidException.class)
+                .hasMessageContaining("Unknown relation 'customeridreference'");
     }
 
     @Test
@@ -233,6 +280,15 @@ class RelationQueryTest {
         assertThat(sql).contains("\"rel_1\"").contains("\"rel_2\"");
     }
 
+    @Test
+    void fullNameAndAliasOfOneRelationCountOnce() {
+        RelationSettings.setMaxRelations(1);
+
+        String sql = sql(filter(LINE, and(FilterRelation.any("orderIdReference", null), FilterRelation.none("order", null))));
+
+        assertThat(sql).contains("\"rel_1\"").contains("\"rel_2\"");
+    }
+
     // ------------------------------------------------------------------ conditions on a related field
 
     @Test
@@ -325,6 +381,17 @@ class RelationQueryTest {
                 List.of("@order.quoteIdReference.code"), RelationQueryContext.unsecured());
 
         assertThat(sql(DSL.select(fields))).contains("((\"rel_1\".\"custom_values\" -> 'quoteIdReference') ->> 'code')");
+    }
+
+    @Test
+    void relatedFieldThroughTheFullReferenceNameReadsTheRelatedJson() {
+        List<SelectField<?>> fields = SelectBuilder.buildFields(LINE,
+                List.of("@orderIdReference.quoteIdReference.code"), RelationQueryContext.unsecured());
+
+        assertThat(sql(DSL.select(fields)))
+                .contains("((\"rel_1\".\"custom_values\" -> 'quoteIdReference') ->> 'code')")
+                .contains("\"rel_1\".\"id\" = \"rt_line\".\"order_id\"")
+                .endsWith(") as \"@orderIdReference.quoteIdReference.code\"");
     }
 
     @Test

@@ -86,7 +86,7 @@ public class FilterBuilder {
     }
 
     /**
-     * A condition on a related field, {@code {"field": "@blanketOrder.code", …}}: the same as a {@link FilterRelation}
+     * A condition on a related field, {@code {"field": "@blanketOrderIdReference.code", …}}: the same as a {@link FilterRelation}
      * (ANY) holding the condition on {@code code}. Each such condition is its own EXISTS: through a one-to-many
      * relation, two of them may match two different related rows; put them in one {@link FilterRelation} to require
      * the same row.

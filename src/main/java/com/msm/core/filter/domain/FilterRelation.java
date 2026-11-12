@@ -7,10 +7,10 @@ import lombok.NoArgsConstructor;
 
 /**
  * A condition on the rows of another object of the same service, reached through a relation the object declares
- * (many-to-one, e.g. {@code blanketOrder}, or one-to-many, e.g. {@code lines}).
+ * (many-to-one, e.g. {@code blanketOrderIdReference}, or one-to-many, e.g. {@code lines}).
  *
  * <pre>
- * { "relation": "blanketOrder", "match": "ANY",
+ * { "relation": "blanketOrderIdReference", "match": "ANY",
  *   "filters": { "operator": "AND", "conditions": [ { "field": "code", "operator": "LIKE", "value": "BO.26" } ] } }
  * </pre>
  *

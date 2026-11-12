@@ -48,7 +48,7 @@ public final class RelationQueryContext {
 
     /** Records the use of a relation, checking the caller may reach it and the number of relations. */
     public void use(ResolvedRelation relation) {
-        if (relations.add(relation.source().getName() + "." + relation.name())) {
+        if (relations.add(relation.key())) {
             if (relations.size() > RelationSettings.maxRelations()) {
                 throw CommonErrors.invalid(relation.name(),
                         "A query may use at most " + RelationSettings.maxRelations() + " relations");

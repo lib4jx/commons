@@ -31,6 +31,7 @@ import java.util.UUID;
  * {@code reverseName} gives the order the one-to-many {@code lines}). A payment references the order once and a note
  * twice, both without reverseName: the order gets {@code rtpayment}, {@code rtnote_orderId} and
  * {@code rtnote_sourceOrderId}.
+ * A profile references the account through {@code creditAnalystReference}, a name without {@code Id}.
  * The quotation the order references is not an object of this service. Each object is secured by business unit.
  */
 final class RelationFixtures {
@@ -73,6 +74,11 @@ final class RelationFixtures {
             reference("orderId", "order_id", "orderIdReference", "rtorder"),
             reference("sourceOrderId", "source_order_id", "sourceOrderIdReference", "rtorder"));
 
+    /** A reference whose names follow neither {@code <x>Id} nor {@code <x>IdReference}, like Profile.creditAnalyst. */
+    static final ObjectMetadata PROFILE = metadata("rtprofile", "rt_profile",
+            attribute("id", "id", "UUID"),
+            reference("creditAnalyst", "credit_analyst", "creditAnalystReference", "rtaccount"));
+
     private RelationFixtures() {
     }
 
@@ -82,6 +88,7 @@ final class RelationFixtures {
         ObjectMetadataFactory.registerObjectMetadata(LINE);
         ObjectMetadataFactory.registerObjectMetadata(PAYMENT);
         ObjectMetadataFactory.registerObjectMetadata(NOTE);
+        ObjectMetadataFactory.registerObjectMetadata(PROFILE);
     }
 
     // ------------------------------------------------------------------ request context

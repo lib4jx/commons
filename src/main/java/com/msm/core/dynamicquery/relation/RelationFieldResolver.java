@@ -11,7 +11,7 @@ import org.jooq.impl.DSL;
 
 /**
  * Fields of a related object in returnFields, sorts and search fields, written {@code @<relation>.<field path>}
- * ({@code @blanketOrder.code}, {@code @blanketOrder.quoteIdReference.code}).
+ * ({@code @blanketOrderIdReference.code}, {@code @blanketOrderIdReference.quoteIdReference.code}).
  *
  * <p>Returned and sorted fields are read with a scalar subquery, and only through a many-to-one relation (one
  * related row at most), so the rows are not multiplied. The subquery applies the related object's data scope and

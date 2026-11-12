@@ -24,6 +24,14 @@ public record ResolvedRelation(
         String targetKey) {
 
     /**
+     * Identity of the relation whatever name the request used ({@code customerIdReference} or its alias
+     * {@code customer}): the source, the target and the keys compared.
+     */
+    public String key() {
+        return source.getName() + "." + sourceKey + "->" + target.getName() + "." + targetKey;
+    }
+
+    /**
      * Links the related rows to the source row: {@code <targetAlias>.<targetKey> = <sourceQualifier>.<sourceKey>}.
      * Both sides are qualified, so the condition reads right inside a subquery of the target.
      */

@@ -123,6 +123,23 @@ class RelationPostgresIT {
     }
 
     @Test
+    void fullReferenceNameReadsTheSameRowsAsTheShortAlias() {
+        ObjectFilterRequest request = request(
+                List.of("productCode", "@orderIdReference.code", "@order.code", "@orderIdReference.quoteIdReference.code"),
+                Sort.of("@orderIdReference.code", SortDirection.ASC));
+        request.setFilters(and(condition("@orderIdReference.code", FilterOperator.LIKE, "bo")));
+
+        PageResponse<Map<String, Object>> page = secured().filter(LINE, request);
+
+        assertThat(page.getTotalElements()).isEqualTo(2);
+        assertThat(page.getContents()).extracting(row -> row.get("productCode")).containsExactlyInAnyOrder("P1", "P2");
+        assertThat(page.getContents()).allSatisfy(row -> assertThat(row)
+                .containsEntry("@orderIdReference.code", "BO.01")
+                .containsEntry("@order.code", "BO.01")
+                .containsEntry("@orderIdReference.quoteIdReference.code", "BG.01"));
+    }
+
+    @Test
     void relationFilterKeepsTheLinesOfVisibleOrdersOnly() {
         ObjectFilterRequest request = request(List.of("productCode"), null);
         request.setFilters(and(FilterRelation.any("order", and(condition("code", FilterOperator.LIKE, "bo")))));

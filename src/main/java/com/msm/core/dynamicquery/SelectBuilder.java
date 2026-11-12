@@ -15,7 +15,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class SelectBuilder {
-    /** In returnFields: every attribute of the queried object, e.g. {@code ["*", "@blanketOrder.code"]}. */
+    /** In returnFields: every attribute of the queried object, e.g. {@code ["*", "@blanketOrderIdReference.code"]}. */
     public static final String ALL_FIELDS = "*";
 
     private SelectBuilder() {}
@@ -35,7 +35,7 @@ public final class SelectBuilder {
 
     /**
      * Null or empty returnFields: every attribute of the object (as before). {@value #ALL_FIELDS} stands for every
-     * attribute at its place, so related fields can be added to them ({@code ["*", "@blanketOrder.code"]}); with
+     * attribute at its place, so related fields can be added to them ({@code ["*", "@blanketOrderIdReference.code"]}); with
      * it, a field listed twice is selected once.
      *
      * @param relations relations of the query, or null when the caller does not support relation fields

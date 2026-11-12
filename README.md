@@ -191,21 +191,26 @@ record.set(OrderMeta.ORDER_CODE, "SO001");
 
 ### Relation (cùng service)
 
-Filter của một object có thể dùng object khác **cùng service** (cùng database) qua relation mà object khai báo. Object của service khác thì không: dùng cột `<ref>_code` / JSON `<ref>IdReference` đã lưu sẵn.
+Filter của một object có thể dùng object khác **cùng service** (cùng database) qua các `attributeRef` object đã có. Object của service khác thì không: dùng cột `<ref>_code` / JSON `<ref>IdReference` đã lưu sẵn.
+
+> **Không cần cấu hình relation.** Field nào đã có `attributeRef` trỏ tới object cùng service thì dùng được ngay `@<reference>.<field>` (`@blanketOrderIdReference.code`), không cần annotation, bảng hay file cấu hình nào khác, và client không phải khai báo gì trước khi gửi request.
+> - Field chưa có `attributeRef` thì thêm `attributeRef` cho field đó (xem [Build metadata từ JPA](#build-metadata-từ-jpa)); đó là thay đổi duy nhất.
+> - `reverseName` là tùy chọn, chỉ để đặt tên dễ đọc cho chiều one-to-many; không có thì tên tự sinh (bảng bên dưới).
+> - Node `{ "relation", "match", "filters" }` trong `filters` cũng không phải cấu hình: đó là cách viết điều kiện trong request, chỉ cần khi muốn `NONE` (`NOT EXISTS`) hoặc gom nhiều điều kiện vào cùng một dòng con. Điều kiện thường thì viết `{"field": "@<reference>.<field>", …}`.
 
 ```json
 {
-  "returnFields": ["*", "@blanketOrder.code", "@blanketOrder.quoteIdReference.code"],
-  "search": { "keyword": "bo.26", "fields": ["productCode", "@blanketOrder.code", "@blanketOrder.name"] },
+  "returnFields": ["*", "productIdReference.code", "@blanketOrderIdReference.code", "@blanketOrderIdReference.quoteIdReference.code"],
+  "search": { "keyword": "bo.26", "fields": ["productIdReference.code", "@blanketOrderIdReference.code", "@blanketOrderIdReference.name"] },
   "filters": {
     "operator": "AND",
     "conditions": [
-      { "relation": "blanketOrder", "match": "ANY",
+      { "relation": "blanketOrderIdReference", "match": "ANY",
         "filters": { "operator": "AND", "conditions": [ { "field": "status", "operator": "EQUALS", "value": "ACTIVE" } ] } },
-      { "field": "@blanketOrder.code", "operator": "IN", "value": ["BO.2611.00012"] }
+      { "field": "@blanketOrderIdReference.code", "operator": "IN", "value": ["BO.2611.00012"] }
     ]
   },
-  "pageRequest": { "page": 1, "size": 20, "sorts": [ { "attribute": "@blanketOrder.code", "direction": "ASC" } ] }
+  "pageRequest": { "page": 1, "size": 20, "sorts": [ { "attribute": "@blanketOrderIdReference.code", "direction": "ASC" } ] }
 }
 ```
 
@@ -213,11 +218,12 @@ Filter của một object có thể dùng object khác **cùng service** (cùng 
 
   | Loại | Có từ đâu | Tên |
   |---|---|---|
-  | many-to-one | Attribute của object có `attributeRef` | Tên reference bỏ `IdReference` (`blanketOrderIdReference` → `blanketOrder`) |
+  | many-to-one | Attribute của object có `attributeRef` | **Tên reference field** (`fieldName` của `attributeRef`), đúng chuỗi client dùng để đọc JSON reference (`blanketOrderIdReference.code`): `blanketOrderIdReference`, `creditAnalystReference`. Tên ngắn của 2.4.5 vẫn nhận làm alias: reference bỏ `IdReference` (`blanketOrder`), không có thì tên field bỏ `Id` |
   | one-to-many | `attributeRef` ở object khác (object con) trỏ về object này | `reverseName` nếu có. Không có thì lấy tên object con (`v2blanketorderproduct`). Object con trỏ về cùng object này nhiều lần mà không có `reverseName` thì lấy `<object con>_<field khóa>` (`contract_customerId`) |
 
+  Ví dụ: `attributeRef` có sẵn của dòng sản phẩm đơn khung đã cho `@blanketOrderIdReference` trên dòng sản phẩm; `reverseName` (tùy chọn) đổi tên chiều ngược trên đơn khung thành `@products` (thay cho `@v2blanketorderproduct`):
+
   ```java
-  // V2BlanketOrderProduct: @blanketOrder trên dòng sản phẩm, @products trên đơn khung
   @AttributeDefinition(attributeRef = @AttributeDefinitionRef(
           fieldName = "blanketOrderIdReference", objectRef = "v2blanketorder", reverseName = "products"))
   @Column(name = "blanket_order_id")
@@ -227,11 +233,28 @@ Filter của một object có thể dùng object khác **cùng service** (cùng 
   Cột là list (multi-select) thì không sinh relation.
 
   Tên không khai báo thì báo `FieldValueInvalidException` ("Unknown relation"). Hai relation trùng tên thì báo "Ambiguous relation".
+- **Cách viết đường dẫn tới field của object cha** (từ 2.4.6):
+
+  | Đường dẫn | Đọc từ |
+  |---|---|
+  | `blanketOrderIdReference.code` | JSON reference lưu trên dòng đang query: giá trị lúc lưu, chỉ các field có trong JSON, không cần subquery |
+  | `@blanketOrderIdReference.code` | dòng object cha hiện tại: field nào cũng được (cột hay JSON), dòng cha đã xóa hoặc ngoài quyền đọc ra `null` |
+  | `@blanketOrderIdReference.salePersonIdReference.name` | dòng đơn khung hiện tại, rồi JSON `salePersonIdReference` lưu trên đơn khung đó |
+
+  Hai đường dẫn của cùng một reference chỉ khác nhau dấu `@`: không `@` là bản đã lưu, có `@` là dữ liệu hiện tại của object cha (chỉ object cùng service).
+  `@` chỉ áp cho đoạn đầu (tên relation, cắt ở dấu chấm đầu tiên); phần sau là field path trên object cha, phân giải như field thường.
+
+  Đường dẫn `<x>IdReference.<field>` (không `@`):
+  - dùng được ở `returnFields`, `sorts`, `search.fields`, `filters` và bên trong relation (`@<relation>.<x>IdReference.<field>`, field trong node `relation`);
+  - object phải khai báo reference đó (`attributeRef` với `fieldName = "<x>IdReference"`); `filters` và `search` báo "not found" với khóa JSON không khai báo, nên request không dò được khóa tùy ý trong `custom_values`;
+  - key trong kết quả đúng bằng chuỗi đã gửi (`row["blanketOrderIdReference.code"]`).
+
+  Hai reference cùng trỏ một object (`customerIdReference`, `invoiceAccountIdReference` → `account`) là hai relation khác tên. Tên đầy đủ và alias của cùng một relation chỉ tính **một** relation trong giới hạn của query.
 - **Node `{ "relation", "match", "filters" }`** trong `filters` thành `EXISTS` (`match: ANY`, mặc định) hoặc `NOT EXISTS` (`match: NONE`) của subquery trên object đích, với alias `rel_<n>`. Dòng của object được query **không bị nhân lên**, nên phân trang và tổng số vẫn đúng. `filters` rỗng nghĩa là "có (hoặc không có) dòng liên quan".
 - **`@<relation>.<field>`** trong `returnFields` và `sorts` là scalar subquery, **chỉ** qua relation many-to-one. Key trong kết quả đúng bằng chuỗi đó. Dòng liên quan không có, đã xóa hoặc ngoài quyền thì đọc ra `null`.
 - **`returnFields`:**
   - `null` hoặc `[]`: mọi field của object đang query, như cũ (không có field relation);
-  - có `"*"`: `"*"` là mọi field của object đó, thêm được field relation, ví dụ `["*", "@blanketOrder.code"]`. Field trùng chỉ lấy một lần;
+  - có `"*"`: `"*"` là mọi field của object đó, thêm được field relation, ví dụ `["*", "@blanketOrderIdReference.code"]`. Field trùng chỉ lấy một lần;
   - liệt kê từng field: lấy đúng các field đó.
 - **`{"field": "@<relation>.<field>", "operator", "value"}`** trong `conditions` giống một node `relation` (ANY) chứa điều kiện đó. Mỗi điều kiện như vậy là một `EXISTS` riêng: qua relation one-to-many, hai điều kiện có thể khớp hai dòng con khác nhau. Muốn cùng một dòng con thì gom vào một node `relation`.
 - **`@<relation>.<field>`** trong `search.fields`: các field của cùng một relation gom vào **một** `EXISTS`, OR với các field của chính object.
